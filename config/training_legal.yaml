@@ -1,0 +1,171 @@
+# 法律领域 AFlow + ROLL 训练配置
+# Legal Domain Training Configuration (CN/US Dual System)
+# 配置时间: 2024-11-25
+
+# 实验配置
+exp_name: "legal_grpo_cn_us_dual"
+output_dir: "checkpoints/legal"
+log_dir: "logs/legal"
+max_steps: 500
+save_every: 50
+eval_every: 100
+val_samples: 100
+log_every: 5
+
+# =====================================
+# GRPO算法配置
+# =====================================
+adv_estimator: "grpo"
+num_return_sequences_in_group: 4   # K=4
+ppo_epochs: 1
+async_generation_ratio: 0
+use_kl_loss: true
+kl_loss_coef: 0.005
+clip_range: 0.20
+gamma: 1.0
+lambda_gae: 0.95
+
+# =====================================
+# Batch配置
+# =====================================
+rollout_batch_size: 6
+prompt_max_length: 4096  # 法律问题通常较长
+response_max_length: 6144  # 法律回答需要更多空间
+
+# 模型配置
+base_model: "Qwen/Qwen2.5-7B-Instruct"
+model_dtype: "bfloat16"
+
+# =====================================
+# LoRA配置
+# =====================================
+use_lora: true
+lora_rank: 64
+lora_alpha: 64
+lora_target_modules: "q_proj,k_proj,v_proj,o_proj"
+lora_dropout: 0.05
+
+# =====================================
+# 训练参数
+# =====================================
+learning_rate: 2.0e-5
+weight_decay: 0.01
+max_grad_norm: 1.0
+gradient_accumulation_steps: 2
+warmup_steps: 100
+bf16: true
+gradient_checkpointing: false
+
+# GPU配置
+device_mapping: [0]
+physical_gpus: [0]
+protected_pids: []
+num_gpus: 1
+world_size: 1
+
+# =====================================
+# 法律数据集配置
+# =====================================
+data_dir: "data"
+
+# 法律领域混合采样比例 (中国:美国 = 50:50)
+domain_ratios:
+  legal_cn: 0.5   # 中国法律
+  legal_us: 0.5   # 美国法律
+
+# 法律任务类型分布（在每个国家内部）
+task_type_ratios:
+  case_prediction: 0.35   # 案件分析/预测
+  statute_qa: 0.25        # 法条问答
+  consultation: 0.25      # 法律咨询
+  document_gen: 0.15      # 法律文书生成
+
+# AFlow配置
+aflow_config_path: "config/aflow_llm.yaml"
+aflow_executor_model: "gpt-4o-mini"
+aflow_operators:
+  - "DirectAnswer"
+  - "CaseLearning"
+  - "StatuteLearning"
+  - "Debate"
+  - "LegalEnsemble"
+  - "LegalRevise"
+execution_timeout: 600
+
+# =====================================
+# 法律任务奖励配置
+# =====================================
+reward_weights:
+  legal_basis: 0.35      # 法律依据准确性
+  reasoning: 0.25        # 推理逻辑质量
+  conclusion: 0.20       # 结论正确性
+  completeness: 0.20     # 答案完整性
+
+# 5档细粒度奖励
+reward_levels: [0.0, 0.2, 0.4, 0.7, 1.0]
+
+# =====================================
+# 法律检索器配置
+# =====================================
+legal_retriever:
+  data_dir: "data/legal"
+  embedding_model_cn: "shibing624/text2vec-base-chinese"
+  embedding_model_us: "all-MiniLM-L6-v2"
+  device: "cpu"
+  case_top_k: 3
+  statute_top_k: 5
+
+# 提示词优化系统
+experience_buffer:
+  enabled: true
+  buffer_size: 200
+  reward_threshold: 0.7  # 使用5档奖励阈值
+  persistence_dir: "data/legal/experience_buffer"
+
+prompt_optimizer:
+  enabled: true
+  few_shot_k: 3
+  similarity_threshold: 0.7
+
+# 监控配置
+wandb:
+  enabled: true
+  project: "legal-agent-workflow"
+  entity: null  # 使用默认实体
+  run_name: null
+
+# =====================================
+# Temperature调度
+# =====================================
+temperature_schedule:
+  enabled: true
+  initial: 0.5
+  final: 0.15
+  warmup_steps: 150
+
+# =====================================
+# 生成配置
+# =====================================
+generation_config:
+  temperature: 0.5
+  top_p: 0.95
+  top_k: 50
+  max_new_tokens: 5120
+  do_sample: true
+
+# 调试选项
+debug: false
+verbose: true
+
+# =====================================
+# WA-GRPO配置（Workflow-Aware优势计算）
+# =====================================
+wa_grpo:
+  alpha: 0.12
+  diversity_weight: 0.35
+  revise_gain_weight: 0.25
+  exec_success_weight: 0.20
+  efficiency_weight: 0.10
+  op_variety_weight: 0.10
+  min_advantage_std: 0.10
+  batch_calibration: true

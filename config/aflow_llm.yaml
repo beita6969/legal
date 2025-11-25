@@ -1,0 +1,24 @@
+# AFlow LLM 配置文件
+# OpenAI API 配置
+
+models:
+  # GPT-4o-mini - 用于法律Operator执行
+  "gpt-4o-mini":
+    api_type: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key: "YOUR_OPENAI_API_KEY"  # 请替换为你的 API Key
+    model: "gpt-4o-mini"
+    max_tokens: 4096
+    temperature: 0.7
+
+  # GPT-4o - 可选，用于复杂任务
+  "gpt-4o":
+    api_type: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key: "YOUR_OPENAI_API_KEY"  # 请替换为你的 API Key
+    model: "gpt-4o"
+    max_tokens: 4096
+    temperature: 0.7
+
+# 默认模型
+default_model: "gpt-4o-mini"

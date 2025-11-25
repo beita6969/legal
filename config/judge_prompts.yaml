@@ -1,0 +1,449 @@
+# Dataset-Specific LLM Judge Prompts Configuration
+# 针对不同数据集的专属LLM Judge提示词配置
+
+# 配置版本
+version: "1.0"
+generated_date: "2025-11-23"
+
+# 全局配置
+global:
+  model: "gpt-oss-120b"  # LLM Judge模型
+  temperature: 0.0        # 确定性输出
+  max_tokens: 200         # 最大生成长度
+
+  # 通用输出格式要求
+  output_format: |
+    You must respond in this exact XML format:
+    <true_false>True</true_false>  or  <true_false>False</true_false>
+
+    Do NOT include any explanation or reasoning in your response.
+    ONLY output the XML tag with True or False.
+
+# ============================================
+# GSM8K 数据集 Judge 配置
+# ============================================
+gsm8k:
+  enabled: true
+  description: "Grade School Math 8K - 小学数学应用题"
+
+  # 答案提取策略
+  answer_extraction:
+    priority:
+      - "#### 后的数字"  # GSM8K标准格式
+      - "\\boxed{}内容"
+      - "最后一个数字"
+
+    patterns:
+      - regex: "####\\s*(-?\\d+\\.?\\d*)"
+        description: "GSM8K标准答案格式"
+      - regex: "<<([^>]+)>>"
+        action: "ignore"  # 忽略中间计算标记
+        description: "中间计算步骤，非最终答案"
+
+  # Judge提示词
+  judge_prompt: |
+    You are a mathematical equivalence evaluator for GSM8K problems.
+
+    **Task**: Determine if the predicted answer is mathematically equivalent to the ground truth.
+
+    **Special Rules for GSM8K**:
+    1. The ground truth may contain calculation steps with "<<calc>>" markers - IGNORE these
+    2. The ground truth may end with "#### ANSWER" - THIS is the final answer
+    3. Extract ONLY the final numerical value from "#### NUMBER"
+    4. If prediction is in \\boxed{{}}, extract the content
+
+    **Problem**: {{{problem}}}
+    **Prediction**: {{{prediction}}}
+    **Ground Truth**: {{{ground_truth}}}
+
+    **Step 1: Extract Final Answers**
+    - From Ground Truth: Look for "####" followed by a number
+    - From Prediction: Extract number from \\boxed{{}} or final number
+    - Ignore intermediate steps like "48/2 = <<48/2=24>>24"
+
+    **Step 2: Normalize**
+    - Remove units ($, hours, etc.)
+    - Convert to decimal if needed
+    - Allow rounding to 2 decimal places
+
+    **Step 3: Compare**
+    - Are the two numbers equal within tolerance 0.01?
+
+    {{{output_format}}}
+
+# ============================================
+# Math 数据集 Judge 配置
+# ============================================
+math:
+  enabled: true
+  description: "MATH Dataset - 竞赛级数学题"
+
+  # 答案提取策略
+  answer_extraction:
+    priority:
+      - "meta.short_answer字段"  # 优先使用标准化答案
+      - "\\boxed{}内容"
+      - "LaTeX表达式"
+
+    latex_normalization:
+      enabled: true
+      rules:
+        - "\\frac{a}{b} → a/b"
+        - "\\sqrt{x} → sqrt(x)"
+        - "x^{a} → x**a"
+
+  # Judge提示词
+  judge_prompt: |
+    You are a mathematical equivalence evaluator for competition-level math problems.
+
+    **Task**: Determine if the predicted answer is mathematically equivalent to the ground truth.
+
+    **Special Rules for MATH Dataset**:
+    1. Ground truth may include full solution process - extract ONLY the final answer
+    2. Handle LaTeX expressions (\\frac, \\sqrt, \\boxed, etc.)
+    3. Answers can be in multiple equivalent forms:
+       - Fraction vs Decimal: 1/2 = 0.5
+       - Percentage: 50% = 0.5
+       - Scientific notation: 1e5 = 100000
+       - LaTeX: \\frac{{1}}{{2}} = 0.5
+
+    **Problem**: {{{problem}}}
+    **Prediction**: {{{prediction}}}
+    **Ground Truth**: {{{ground_truth}}}
+
+    **Step 1: Extract Final Answers**
+    - From Ground Truth: Extract the final answer (may be in \\boxed{{}} or at end)
+    - From Prediction: Extract from \\boxed{{}} or final expression
+
+    **Step 2: Normalize LaTeX**
+    - Convert \\frac{{a}}{{b}} to a/b
+    - Convert \\sqrt{{x}} to sqrt(x)
+    - Remove formatting commands
+
+    **Step 3: Evaluate Equivalence**
+    - Numerical: Compare values with tolerance 1e-4
+    - Algebraic: Check if expressions simplify to same form
+    - Allow equivalent representations (0.5 = 1/2 = 50%)
+
+    {{{output_format}}}
+
+# ============================================
+# HumanEval 数据集配置
+# ============================================
+humaneval:
+  enabled: false  # 禁用LLM Judge，使用测试执行
+  description: "HumanEval - Python编程任务"
+
+  evaluation_method: "test_execution"  # 使用测试用例执行
+
+  # 测试执行配置
+  test_execution:
+    timeout: 5.0  # 秒
+    max_memory: 512  # MB
+    sandbox: true
+
+  # 仅在缺少测试用例时使用LLM Judge
+  fallback_judge_prompt: |
+    ⚠️ WARNING: Test cases are missing. Falling back to semantic comparison.
+
+    **Task**: Determine if the predicted code is semantically equivalent to the ground truth.
+
+    **Problem**: {{{problem}}}
+    **Prediction**: {{{prediction}}}
+    **Ground Truth**: {{{ground_truth}}}
+
+    **Rules**:
+    1. Variable names can be different (value_map vs WORD_TO_NUM)
+    2. Implementation approach can vary
+    3. Focus on functional equivalence, not text matching
+    4. If both solve the same problem correctly, they are equivalent
+
+    ⚠️ Note: This is NOT reliable. Code should be executed with test cases.
+
+    {{{output_format}}}
+
+# ============================================
+# MBPP 数据集配置
+# ============================================
+mbpp:
+  enabled: false  # 禁用LLM Judge，使用测试执行
+  description: "Mostly Basic Python Problems"
+
+  evaluation_method: "test_execution"
+
+  test_execution:
+    timeout: 5.0
+    max_memory: 512
+    sandbox: true
+
+  # Fallback同HumanEval
+  fallback_judge_prompt: |
+    ⚠️ WARNING: Test cases are missing. Falling back to semantic comparison.
+
+    **Task**: Determine if the predicted code is semantically equivalent to the ground truth.
+
+    **Problem**: {{{problem}}}
+    **Prediction**: {{{prediction}}}
+    **Ground Truth**: {{{ground_truth}}}
+
+    **Rules**:
+    1. Variable names can be different (value_map vs WORD_TO_NUM)
+    2. Implementation approach can vary
+    3. Focus on functional equivalence, not text matching
+    4. If both solve the same problem correctly, they are equivalent
+
+    ⚠️ Note: This is NOT reliable. Code should be executed with test cases.
+
+    {{{output_format}}}
+
+# ============================================
+# HotpotQA 数据集 Judge 配置
+# ============================================
+hotpotqa:
+  enabled: true
+  description: "HotpotQA - 多跳推理问答"
+
+  # 答案标准化
+  answer_normalization:
+    - lowercase: true
+    - remove_articles: true  # a, an, the
+    - remove_punctuation: true
+    - trim_whitespace: true
+
+  # Judge提示词
+  judge_prompt: |
+    You are an answer evaluator for multi-hop reasoning questions.
+
+    **Task**: Are these two answers equivalent?
+
+    **Prediction**: {{{prediction}}}
+    **Ground Truth**: {{{ground_truth}}}
+
+    **Guidelines**:
+    - Answers may be option letters (A-E) or full text
+    - Case insensitive: "A" = "a"
+    - Ignore articles and punctuation: "the Eiffel Tower" = "Eiffel Tower"
+    - Consider semantic equivalence: "capital" = "capital city"
+    - Substring match OK: "The answer is Paris" contains "Paris"
+
+    {{{output_format}}}
+
+# ============================================
+# SQuAD v2 数据集 Judge 配置
+# ============================================
+squad_v2:
+  enabled: true
+  description: "Stanford Question Answering Dataset v2"
+
+  # 同 HotpotQA 的标准化策略
+  answer_normalization:
+    - lowercase: true
+    - remove_articles: true
+    - remove_punctuation: true
+    - trim_whitespace: true
+
+  # Judge提示词（类似HotpotQA但更严格）
+  judge_prompt: |
+    You are an answer evaluator for reading comprehension questions.
+
+    **Task**: Are these two answers equivalent?
+
+    **Prediction**: {{{prediction}}}
+    **Ground Truth**: {{{ground_truth}}}
+
+    **Guidelines**:
+    - Case insensitive: "Paris" = "paris"
+    - Ignore articles and punctuation: "the Eiffel Tower" = "Eiffel Tower"
+    - Consider semantic equivalence: "capital" = "capital city"
+    - Substring match OK: "The answer is Paris" contains "Paris"
+
+    {{{output_format}}}
+
+# ============================================
+# CommonsenseQA 数据集 Judge 配置
+# ============================================
+commonsenseqa:
+  enabled: true
+  description: "Common Sense Question Answering"
+
+  # CommonsenseQA特殊规则：选项题
+  multiple_choice:
+    enabled: true
+    option_format: "A-E"
+
+    # 选项题评分规则
+    rules: |
+      如果是选项题（ABCDE）:
+      1. 如果预测和真值都是单字母 → 直接比较
+      2. 如果预测是字母，真值是文本 → False（禁止推断）
+      3. 如果预测是文本，真值是字母 → 检查文本是否匹配该选项
+
+  judge_prompt: |
+    You are an answer evaluator for common sense reasoning questions.
+
+    **Task**: Are these two answers equivalent?
+
+    **Prediction**: {{{prediction}}}
+    **Ground Truth**: {{{ground_truth}}}
+
+    **Notes**:
+    - Both may be option letters (A-E) or full text answers
+    - "A" matches "A" (case insensitive)
+    - "ream" matches "ream" after normalization
+    - Consider them equivalent if they convey the same meaning
+
+    {{{output_format}}}
+
+# ============================================
+# MMLU 数据集 Judge 配置
+# ============================================
+mmlu:
+  enabled: true
+  description: "Massive Multitask Language Understanding"
+
+  # MMLU是多选题，规则同CommonsenseQA
+  multiple_choice:
+    enabled: true
+    option_format: "A-D"
+
+  judge_prompt: |
+    You are an answer evaluator for multitask language understanding questions.
+
+    **Task**: Are these two answers equivalent?
+
+    **Prediction**: {{{prediction}}}
+    **Ground Truth**: {{{ground_truth}}}
+
+    **Notes**:
+    - Multiple choice questions (A-D options)
+    - "A" matches "A" (case insensitive)
+    - Consider them equivalent if they convey the same meaning
+
+    {{{output_format}}}
+
+# ============================================
+# 数据集映射配置
+# ============================================
+dataset_mapping:
+  # 问题类型 → 数据集配置
+  math:
+    - gsm8k
+    - math
+
+  code:
+    - humaneval
+    - mbpp
+
+  qa:
+    - hotpotqa
+    - squad_v2
+    - commonsenseqa
+    - mmlu
+
+  # 根据source字段匹配
+  by_source:
+    gsm8k: "gsm8k"
+    math: "math"
+    humaneval: "humaneval"
+    mbpp: "mbpp"
+    hotpotqa: "hotpotqa"
+    squad_v2: "squad_v2"
+    commonsenseqa: "commonsenseqa"
+    mmlu: "mmlu"
+
+# ============================================
+# 评估策略选择逻辑
+# ============================================
+evaluation_strategy:
+  # 优先级：source > problem_type > default
+
+  priority:
+    1. "检查sample中的source字段"
+    2. "如果source匹配dataset_mapping，使用对应配置"
+    3. "否则，根据problem_type使用默认配置"
+    4. "如果都不匹配，使用global配置"
+
+  # 示例决策树
+  decision_tree: |
+    if sample.get('source') in ['humaneval', 'mbpp']:
+        # Code题：使用测试执行
+        return evaluate_by_test_execution()
+
+    elif sample.get('source') == 'gsm8k':
+        # GSM8K：使用GSM8K专属Judge
+        return llm_judge_with_prompt(judge_prompts['gsm8k'])
+
+    elif sample.get('source') == 'math':
+        # Math：使用Math专属Judge + short_answer优先
+        return llm_judge_with_prompt(judge_prompts['math'])
+
+    elif sample.get('problem_type') == 'qa':
+        # QA题：根据source选择具体配置
+        if sample.get('source') == 'hotpotqa':
+            return llm_judge_with_prompt(judge_prompts['hotpotqa'])
+        else:
+            # 默认QA配置
+            return llm_judge_with_prompt(judge_prompts['squad_v2'])
+
+    else:
+        # 默认：使用当前的通用Judge
+        return llm_judge_with_prompt(judge_prompts['global'])
+
+# ============================================
+# 性能监控配置
+# ============================================
+monitoring:
+  enabled: true
+
+  # 记录每种Judge的性能
+  metrics:
+    - "judge_call_count"  # 调用次数
+    - "judge_success_rate"  # 成功解析率
+    - "judge_latency"  # 延迟
+    - "agreement_with_fallback"  # 与fallback方法的一致性
+
+  # 采样调试
+  debug_sampling:
+    enabled: true
+    sample_rate: 0.1  # 10%的判定记录详细日志
+
+# ============================================
+# 测试和验证
+# ============================================
+testing:
+  # 回归测试用例
+  regression_tests:
+    - name: "GSM8K #### 提取"
+      prediction: "So the answer is 24 cookies."
+      ground_truth: "Natalia sold 48/2 = <<48/2=24>>24...\\n#### 72"
+      expected: false  # 24 != 72
+
+    - name: "Math LaTeX等价"
+      prediction: "\\boxed{0.5}"
+      ground_truth: "The answer is \\frac{1}{2}"
+      expected: true  # 0.5 = 1/2
+
+    - name: "HotpotQA 选项推断禁止"
+      prediction: "E"
+      ground_truth: "might dream"
+      expected: false  # 禁止推断E=might dream
+
+    - name: "HotpotQA ���项文本匹配"
+      prediction: "might dream"
+      ground_truth: "E"
+      expected: true  # 文本匹配选项内容
+
+    - name: "Code变量名差异"
+      prediction: "WORD_TO_NUM = {'zero': 0}"
+      ground_truth: "value_map = {'zero': 0}"
+      expected: "test_execution"  # 应该执行测试，不用Judge
+
+# ============================================
+# 未来扩展
+# ============================================
+future_enhancements:
+  - "添加更多数据集支持（如ARC, HellaSwag）"
+  - "实现选项映射表（记录每个问题的ABCDE对应内容）"
+  - "微调LLM Judge模型以提高准确率"
+  - "实现多Judge投票机制（ensemble）"
+  - "支持用户自定义Judge规则"
